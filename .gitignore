@@ -20,3 +20,8 @@ crash.*.log
 # Lambda build artifacts
 infra/lambda/build/
 infra/lambda/*.zip
+
+#temp files
+.DS_Store
+Thumbs.db
+*.tmp
