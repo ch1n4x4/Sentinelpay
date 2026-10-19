@@ -10,6 +10,8 @@
 ---
 
 ## Table of Contents
+- [Tools Used](#tools-used)
+- [Skills Learned](#skills-learned)
 - [1. Problem Statement & Objectives](#1-problem-statement--objectives)
 - [2. Architecture & Design Overview](#2-architecture--design-overview)
 - [3. Technology Stack & Tooling](#3-technology-stack--tooling)
@@ -18,6 +20,78 @@
 - [6. Validation, Testing & Proof of Work](#6-validation-testing--proof-of-work)
 - [7. Key Challenges & Trade-Offs](#7-key-challenges--trade-offs)
 - [8. Future Enhancements](#8-future-enhancements)
+
+---
+
+## Tools Used
+
+**Application, Containers & Databases**  
+![Python 3.11](https://img.shields.io/badge/Python_3.11-3776AB?style=for-the-badge&logo=python&logoColor=white)
+![Flask](https://img.shields.io/badge/Flask-000000?style=for-the-badge&logo=flask&logoColor=white)
+![Gunicorn](https://img.shields.io/badge/Gunicorn-499848?style=for-the-badge&logo=gunicorn&logoColor=white)
+![PostgreSQL 17](https://img.shields.io/badge/PostgreSQL_17-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)
+![Redis](https://img.shields.io/badge/Redis-DC382D?style=for-the-badge&logo=redis&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)
+![Alpine Linux](https://img.shields.io/badge/Alpine_Linux-0D597F?style=for-the-badge&logo=alpinelinux&logoColor=white)
+
+**Cloud Infrastructure & Detection (AWS `eu-west-1`)**  
+![AWS](https://img.shields.io/badge/AWS_(eu--west--1)-232F3E?style=for-the-badge&logo=amazonwebservices&logoColor=FF9900)
+![Terraform](https://img.shields.io/badge/Terraform-844FBA?style=for-the-badge&logo=terraform&logoColor=white)
+![Amazon ECS Fargate](https://img.shields.io/badge/ECS_Fargate-FF9900?style=for-the-badge&logo=amazonecs&logoColor=white)
+![Amazon RDS](https://img.shields.io/badge/Amazon_RDS-527FFF?style=for-the-badge&logo=amazonrds&logoColor=white)
+![Amazon S3](https://img.shields.io/badge/Amazon_S3_Object_Lock-569A31?style=for-the-badge&logo=amazons3&logoColor=white)
+![AWS KMS & Secrets Manager](https://img.shields.io/badge/KMS_%26_Secrets_Manager-DD344C?style=for-the-badge&logo=amazonaws&logoColor=white)
+![AWS WAFv2 & ALB](https://img.shields.io/badge/AWS_WAFv2_%26_ALB-8C4FFF?style=for-the-badge&logo=amazonaws&logoColor=white)
+![GuardDuty & Security Hub](https://img.shields.io/badge/GuardDuty_%7C_Security_Hub_%7C_CloudTrail-DD344C?style=for-the-badge&logo=amazonaws&logoColor=white)
+
+**DevSecOps, Supply Chain, DAST & Analytics**  
+![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-2088FF?style=for-the-badge&logo=githubactions&logoColor=white)
+![AWS OIDC](https://img.shields.io/badge/AWS_OIDC_Federation-FF9900?style=for-the-badge&logo=openid&logoColor=white)
+![OPA Conftest](https://img.shields.io/badge/OPA_Rego_%26_Conftest-7D9199?style=for-the-badge&logo=openpolicyagent&logoColor=white)
+![Semgrep](https://img.shields.io/badge/Semgrep-17B585?style=for-the-badge)
+![Bandit](https://img.shields.io/badge/Bandit_SAST-FFD43B?style=for-the-badge&logo=python&logoColor=black)
+![Gitleaks](https://img.shields.io/badge/Gitleaks-E34F26?style=for-the-badge&logo=git&logoColor=white)
+![Trivy](https://img.shields.io/badge/Trivy_SCA_%26_Image-1904DA?style=for-the-badge&logo=aquasecurity&logoColor=white)
+![Checkov & tfsec](https://img.shields.io/badge/Checkov_%26_tfsec-6B4FBB?style=for-the-badge)
+![Syft & Cosign](https://img.shields.io/badge/Syft_SBOM_%26_Cosign-4B32C3?style=for-the-badge)
+![OWASP ZAP](https://img.shields.io/badge/OWASP_ZAP_v2.17.0-00549E?style=for-the-badge&logo=owasp&logoColor=white)
+![Power BI](https://img.shields.io/badge/Power_BI-F2C811?style=for-the-badge&logo=powerbi&logoColor=black)
+![OpenSSL](https://img.shields.io/badge/OpenSSL-721412?style=for-the-badge&logo=openssl&logoColor=white)
+
+---
+
+## Skills Learned
+
+**Application Security (AppSec) & API Penetration Testing**  
+![SQLi Remediation](https://img.shields.io/badge/SQLi_Parameterized_Queries-Critical_Fix-critical?style=flat-square)
+![Asymmetric JWT](https://img.shields.io/badge/RS256_Asymmetric_JWT-Auth_Hardening-critical?style=flat-square)
+![IDOR Prevention](https://img.shields.io/badge/IDOR_Ownership_Enforcement-Access_Control-orange?style=flat-square)
+![SSRF Mitigation](https://img.shields.io/badge/SSRF_DNS_%26_IP_Validation-Network_Filter-orange?style=flat-square)
+![TOCTOU Locking](https://img.shields.io/badge/PostgreSQL_Row--Level_Locking-Race_Condition_Fix-critical?style=flat-square)
+![Argon2id Hashing](https://img.shields.io/badge/Argon2id_Zero--Downtime_Migration-Cryptography-blue?style=flat-square)
+![Secure Serialization](https://img.shields.io/badge/Signed_JSON_Serialization-RCE_Prevention-critical?style=flat-square)
+![Redis Rate Limiting](https://img.shields.io/badge/Redis_Canonical_Rate_Limiting-Brute--Force_Defense-yellow?style=flat-square)
+![Structured Audit Logging](https://img.shields.io/badge/Secret--Masked_JSON_Audit_Logs-SOC_2_Compliance-success?style=flat-square)
+![Container Hardening](https://img.shields.io/badge/Non--Root_Alpine_Containers-Gunicorn_%2B_HEALTHCHECK-0D597F?style=flat-square)
+![Live OWASP ZAP DAST](https://img.shields.io/badge/Live_OWASP_ZAP_DAST-ACM_TLS_%2B_Security_Headers-00549E?style=flat-square)
+
+**DevSecOps CI/CD, Policy as Code & Software Supply-Chain Security**  
+![Reusable Workflows](https://img.shields.io/badge/Reusable_GitHub_Actions-Modular_CI%2FCD-2088FF?style=flat-square)
+![Keyless AWS OIDC](https://img.shields.io/badge/Keyless_AWS_OIDC-Workload_Identity_Federation-FF9900?style=flat-square)
+![OPA Rego Policy](https://img.shields.io/badge/OPA_Rego_%26_Conftest-Policy_as_Code-7D9199?style=flat-square)
+![CycloneDX SBOM](https://img.shields.io/badge/Syft_CycloneDX_SBOM-Software_Transparency-informational?style=flat-square)
+![Cosign Provenance](https://img.shields.io/badge/Sigstore_Cosign_Keyless_Signing-Supply_Chain_Security-4B32C3?style=flat-square)
+![Immutable ECR Digests](https://img.shields.io/badge/Immutable_ECR_SHA256_Digests-Artifact_Integrity-success?style=flat-square)
+![Git History Secret Baselining](https://img.shields.io/badge/Gitleaks_History_Baselining-Secret_Governance-E34F26?style=flat-square)
+
+**Cloud Security Architecture, Detection Engineering & DAST**  
+![Modular Terraform](https://img.shields.io/badge/Modular_Terraform_IaC-S3_%26_DynamoDB_State_Locking-844FBA?style=flat-square)
+![Zero-Trust VPC](https://img.shields.io/badge/Multi--AZ_Private_Subnets-SG_Reference_Chaining-232F3E?style=flat-square)
+![KMS Envelope Encryption](https://img.shields.io/badge/Customer--Managed_KMS-Split_Admin%2FUser_Roles-DD344C?style=flat-square)
+![Automated Secret Rotation](https://img.shields.io/badge/30--Day_RDS_Secret_Rotation-Code--Signed_Lambda-success?style=flat-square)
+![S3 Object Lock](https://img.shields.io/badge/S3_Object_Lock-COMPLIANCE_%26_GOVERNANCE-569A31?style=flat-square)
+![Deception Engineering](https://img.shields.io/badge/IAM_Honeytoken_Tripwire-CloudTrail_%2B_EventBridge-critical?style=flat-square)
+![Automated SOAR Containment](https://img.shields.io/badge/GuardDuty_Auto--Quarantine-ENI_Isolation_Lambda-important?style=flat-square)
 
 ---
 
