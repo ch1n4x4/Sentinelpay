@@ -87,7 +87,7 @@ resource "aws_vpc_security_group_ingress_rule" "alb_to_ecs" {
 resource "aws_vpc_security_group_egress_rule" "ecs_https" {
   security_group_id = aws_security_group.ecs.id
 
-  cidr_ipv4 = var.vpc_cidr
+  cidr_ipv4 = "0.0.0.0/0"
 
   from_port   = 443
   to_port     = 443
@@ -261,6 +261,7 @@ resource "aws_ecs_task_definition" "this" {
       name      = "placeholder"
       image     = var.container_image
       essential = true
+      environment = var.env_vars
 
       portMappings = [
         {

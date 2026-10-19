@@ -1,15 +1,15 @@
 """SentinelPay Payments API — main entrypoint."""
 
 import os
-
 from flask import Flask, jsonify
-
+from werkzeug.exceptions import HTTPException
 from app.routes.auth import auth_bp
 from app.routes.accounts import accounts_bp
 from app.routes.transactions import transactions_bp
 from app.routes.wallets import wallets_bp
 from app.routes.webhooks import webhooks_bp
 from app.routes.admin import admin_bp
+from app.extensions import limiter
 
 
 # ============================================================================
@@ -20,7 +20,6 @@ from app.routes.admin import admin_bp
 # main did not initialize the shared Flask-Limiter extension on the real
 # application instance. The test branch keeps one shared limiter and attaches
 # it inside create_app(), where Flask actually constructs the served app.
-from app.extensions import limiter
 
 
 def create_app():
@@ -95,15 +94,29 @@ def create_app():
     # main previously returned raw exception data. The test branch retains
     # complete diagnostic information in server logs but gives the client only
     # a stable generic response.
+
+    # Remediates ZAP 10038, 10021, 10063, 90004, 10049, and 10036
+    @app.after_request
+    def set_security_headers(response):
+        response.headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
+        response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, private"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+        response.headers["Server"] = "SentinelPay"
+        return response
+
+    # Remediates ZAP 90022 & 10023: Preserve 404/405 status codes instead of returning 500
+    @app.errorhandler(HTTPException)
+    def handle_http_exception(exc):
+        return jsonify({"error": "resource not found" if exc.code == 404 else "request error"}), exc.code
+
     @app.errorhandler(Exception)
     def handle_exception(exc):
-        app.logger.exception(
-            "Unhandled application exception"
-        )
-
-        return jsonify({
-            "error": "internal server error"
-        }), 500
+        app.logger.exception("Unhandled application exception")
+        return jsonify({"error": "request could not be processed"}), 500
 
     return app
 

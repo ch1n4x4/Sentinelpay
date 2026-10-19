@@ -14,13 +14,22 @@ output "alb_dns_name" {
   value = module.edge.alb_dns_name
 }
 
-output "ecs_cluster" {
-  value = module.compute.ecs_cluster_name
+output "ecs_cluster_payments" {
+  value = module.compute_payments.ecs_cluster_name
 }
 
-output "ecs_service" {
-  value = module.compute.ecs_service_name
+output "ecs_service_payments" {
+  value = module.compute_payments.ecs_service_name
 }
+
+output "ecs_cluster_kyc" {
+  value = module.compute_kyc.ecs_cluster_name
+}
+
+output "ecs_service_kyc" {
+  value = module.compute_kyc.ecs_service_name
+}
+/*
 output "cloudtrail_name" {
   value = module.detection.cloudtrail_name
 }
@@ -39,7 +48,7 @@ output "quarantine_security_group_id" {
 
 output "quarantine_lambda_name" {
   value = module.detection.quarantine_lambda_name
-}
+}*/
 output "github_actions_role_arn" {
   description = "IAM role ARN used by GitHub Actions through OIDC"
   value       = module.github_oidc.role_arn

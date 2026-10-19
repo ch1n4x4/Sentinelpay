@@ -12,6 +12,7 @@ tfplan
 # Terraform variable values
 terraform.tfvars
 *.auto.tfvars
+**/terraform.tfvars
 
 # Terraform crash logs
 crash.log
@@ -20,3 +21,7 @@ crash.*.log
 # Lambda build artifacts
 infra/lambda/build/
 infra/lambda/*.zip
+
+#private keys
+*.key
+*.pem

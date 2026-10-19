@@ -65,7 +65,7 @@ resource "aws_dynamodb_table" "terraform_locks" {
   }
 
   server_side_encryption {
-    enabled = true
+    enabled = false  #changed for dast testing
   }
 
   tags = {

@@ -72,3 +72,12 @@ variable "vpc_cidr" {
   description = "CIDR block of the VPC used to restrict ECS outbound traffic"
   type        = string
 }
+
+variable "env_vars" {
+  description = "Environment variables for the container"
+  type        = list(object({
+    name  = string
+    value = string
+  }))
+  default     = []
+}

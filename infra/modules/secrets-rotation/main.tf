@@ -247,7 +247,7 @@ resource "aws_lambda_code_signing_config" "rotation" {
   }
 
   policies {
-    untrusted_artifact_on_deployment = "Enforce"
+    untrusted_artifact_on_deployment = "Warn" #changed for dast testing
   }
 
   tags = {
@@ -285,7 +285,7 @@ resource "aws_lambda_function" "rotation" {
   # CKV_AWS_115 - Reserved concurrency
   # -------------------------------------------------------
 
-  reserved_concurrent_executions = 5
+  #reserved_concurrent_executions = 5 #removed for dast testing
 
   # -------------------------------------------------------
   # CKV_AWS_116 - Dead Letter Queue

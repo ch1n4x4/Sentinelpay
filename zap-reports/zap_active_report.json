@@ -1,0 +1,379 @@
+{
+	"@programName": "ZAP",
+	"@version": "2.17.0",
+	"@generated": "Wed, 14 Oct 2026 23:59:42",
+	"created": "2026-10-14T23:59:42.941203399Z",
+	"insights":[
+		{
+			"level": "Low",
+			"reason": "Warning",
+			"site": "",
+			"key": "insight.log.warn",
+			"description": "ZAP warnings logged - see the zap.log file for details",
+			"statistic": "4"
+		},
+		{
+			"level": "Info",
+			"reason": "Informational",
+			"site": "",
+			"key": "insight.network.failure",
+			"description": "Percentage of network failures",
+			"statistic": "1"
+		},
+		{
+			"level": "Info",
+			"reason": "Informational",
+			"site": "http://sentinelpay-dev-alb-2097557956.eu-west-1.elb.amazonaws.com",
+			"key": "insight.code.4xx",
+			"description": "Percentage of responses with status code 4xx",
+			"statistic": "19"
+		},
+		{
+			"level": "Info",
+			"reason": "Informational",
+			"site": "http://sentinelpay-dev-alb-2097557956.eu-west-1.elb.amazonaws.com",
+			"key": "insight.code.5xx",
+			"description": "Percentage of responses with status code 5xx",
+			"statistic": "80"
+		},
+		{
+			"level": "Info",
+			"reason": "Informational",
+			"site": "http://sentinelpay-dev-alb-2097557956.eu-west-1.elb.amazonaws.com",
+			"key": "insight.endpoint.ctype.application/json",
+			"description": "Percentage of endpoints with content type application/json",
+			"statistic": "100"
+		},
+		{
+			"level": "Info",
+			"reason": "Informational",
+			"site": "http://sentinelpay-dev-alb-2097557956.eu-west-1.elb.amazonaws.com",
+			"key": "insight.endpoint.method.GET",
+			"description": "Percentage of endpoints with method GET",
+			"statistic": "100"
+		},
+		{
+			"level": "Info",
+			"reason": "Informational",
+			"site": "http://sentinelpay-dev-alb-2097557956.eu-west-1.elb.amazonaws.com",
+			"key": "insight.endpoint.total",
+			"description": "Count of total endpoints",
+			"statistic": "3"
+		},
+		{
+			"level": "Info",
+			"reason": "Informational",
+			"site": "http://sentinelpay-dev-alb-2097557956.eu-west-1.elb.amazonaws.com",
+			"key": "insight.response.slow",
+			"description": "Percentage of slow responses",
+			"statistic": "100"
+		},
+		{
+			"level": "Info",
+			"reason": "Informational",
+			"site": "https://sentinelpay-dev-alb-2097557956.eu-west-1.elb.amazonaws.com",
+			"key": "insight.endpoint.method.GET",
+			"description": "Percentage of endpoints with method GET",
+			"statistic": "100"
+		},
+		{
+			"level": "Info",
+			"reason": "Informational",
+			"site": "https://sentinelpay-dev-alb-2097557956.eu-west-1.elb.amazonaws.com",
+			"key": "insight.endpoint.total",
+			"description": "Count of total endpoints",
+			"statistic": "1"
+		}
+	],
+	"site":[ 
+		{
+			"@name": "https://sentinelpay-dev-alb-2097557956.eu-west-1.elb.amazonaws.com",
+			"@host": "sentinelpay-dev-alb-2097557956.eu-west-1.elb.amazonaws.com",
+			"@port": "443",
+			"@ssl": "true",
+			"alerts": [ 
+			]
+		},
+		{
+			"@name": "http://sentinelpay-dev-alb-2097557956.eu-west-1.elb.amazonaws.com",
+			"@host": "sentinelpay-dev-alb-2097557956.eu-west-1.elb.amazonaws.com",
+			"@port": "80",
+			"@ssl": "false",
+			"alerts": [ 
+				{
+					"pluginid": "10106",
+					"alertRef": "10106",
+					"alert": "HTTP Only Site",
+					"name": "HTTP Only Site",
+					"riskcode": "2",
+					"confidence": "2",
+					"riskdesc": "Medium (Medium)",
+					"desc": "<p>The site is only served under HTTP and not HTTPS.</p>",
+					"instances":[ 
+						{
+							"id": "20",
+							"uri": "http://sentinelpay-dev-alb-2097557956.eu-west-1.elb.amazonaws.com/",
+							"nodeName": "https:\/\/sentinelpay-dev-alb-2097557956.eu-west-1.elb.amazonaws.com\/",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "",
+							"otherinfo": "Failed to connect.\nZAP attempted to connect via: https://sentinelpay-dev-alb-2097557956.eu-west-1.elb.amazonaws.com/"
+						}
+					],
+					"count": "1",
+					"systemic": false,
+					"solution": "<p>Configure your web or application server to use SSL (https).</p>",
+					"otherinfo": "<p>Failed to connect.</p><p>ZAP attempted to connect via: https://sentinelpay-dev-alb-2097557956.eu-west-1.elb.amazonaws.com/</p>",
+					"reference": "<p>https://cheatsheetseries.owasp.org/cheatsheets/Transport_Layer_Protection_Cheat_Sheet.html</p><p>https://letsencrypt.org/</p>",
+					"cweid": "311",
+					"wascid": "4",
+					"sourceid": "66"
+				},
+				{
+					"pluginid": "90022",
+					"alertRef": "90022",
+					"alert": "Application Error Disclosure",
+					"name": "Application Error Disclosure",
+					"riskcode": "1",
+					"confidence": "2",
+					"riskdesc": "Low (Medium)",
+					"desc": "<p>This page contains an error/warning message that may disclose sensitive information like the location of the file that produced the unhandled exception. This information can be used to launch further attacks against the web application. The alert could be a false positive if the error message is found inside a documentation page.</p>",
+					"instances":[ 
+						{
+							"id": "9",
+							"uri": "http://sentinelpay-dev-alb-2097557956.eu-west-1.elb.amazonaws.com",
+							"nodeName": "http:\/\/sentinelpay-dev-alb-2097557956.eu-west-1.elb.amazonaws.com",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "HTTP/1.1 500 INTERNAL SERVER ERROR",
+							"otherinfo": ""
+						},
+						{
+							"id": "0",
+							"uri": "http://sentinelpay-dev-alb-2097557956.eu-west-1.elb.amazonaws.com/",
+							"nodeName": "http:\/\/sentinelpay-dev-alb-2097557956.eu-west-1.elb.amazonaws.com\/",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "HTTP/1.1 500 INTERNAL SERVER ERROR",
+							"otherinfo": ""
+						},
+						{
+							"id": "6",
+							"uri": "http://sentinelpay-dev-alb-2097557956.eu-west-1.elb.amazonaws.com/robots.txt",
+							"nodeName": "http:\/\/sentinelpay-dev-alb-2097557956.eu-west-1.elb.amazonaws.com\/robots.txt",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "HTTP/1.1 500 INTERNAL SERVER ERROR",
+							"otherinfo": ""
+						},
+						{
+							"id": "7",
+							"uri": "http://sentinelpay-dev-alb-2097557956.eu-west-1.elb.amazonaws.com/sitemap.xml",
+							"nodeName": "http:\/\/sentinelpay-dev-alb-2097557956.eu-west-1.elb.amazonaws.com\/sitemap.xml",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "HTTP/1.1 500 INTERNAL SERVER ERROR",
+							"otherinfo": ""
+						}
+					],
+					"count": "4",
+					"systemic": false,
+					"solution": "<p>Review the source code of this page. Implement custom error pages. Consider implementing a mechanism to provide a unique error reference/identifier to the client (browser) while logging the details on the server side and not exposing them to the user.</p>",
+					"otherinfo": "",
+					"reference": "",
+					"cweid": "550",
+					"wascid": "13",
+					"sourceid": "7"
+				},
+				{
+					"pluginid": "10023",
+					"alertRef": "10023",
+					"alert": "Information Disclosure - Debug Error Messages",
+					"name": "Information Disclosure - Debug Error Messages",
+					"riskcode": "1",
+					"confidence": "2",
+					"riskdesc": "Low (Medium)",
+					"desc": "<p>The response appeared to contain common error messages returned by platforms such as ASP.NET, and Web-servers such as IIS and Apache. You can configure the list of common debug messages.</p>",
+					"instances":[ 
+						{
+							"id": "10",
+							"uri": "http://sentinelpay-dev-alb-2097557956.eu-west-1.elb.amazonaws.com",
+							"nodeName": "http:\/\/sentinelpay-dev-alb-2097557956.eu-west-1.elb.amazonaws.com",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "internal server error",
+							"otherinfo": ""
+						},
+						{
+							"id": "1",
+							"uri": "http://sentinelpay-dev-alb-2097557956.eu-west-1.elb.amazonaws.com/",
+							"nodeName": "http:\/\/sentinelpay-dev-alb-2097557956.eu-west-1.elb.amazonaws.com\/",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "internal server error",
+							"otherinfo": ""
+						},
+						{
+							"id": "13",
+							"uri": "http://sentinelpay-dev-alb-2097557956.eu-west-1.elb.amazonaws.com/robots.txt",
+							"nodeName": "http:\/\/sentinelpay-dev-alb-2097557956.eu-west-1.elb.amazonaws.com\/robots.txt",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "internal server error",
+							"otherinfo": ""
+						},
+						{
+							"id": "11",
+							"uri": "http://sentinelpay-dev-alb-2097557956.eu-west-1.elb.amazonaws.com/sitemap.xml",
+							"nodeName": "http:\/\/sentinelpay-dev-alb-2097557956.eu-west-1.elb.amazonaws.com\/sitemap.xml",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "internal server error",
+							"otherinfo": ""
+						}
+					],
+					"count": "4",
+					"systemic": false,
+					"solution": "<p>Disable debugging messages before pushing to production.</p>",
+					"otherinfo": "",
+					"reference": "",
+					"cweid": "1295",
+					"wascid": "13",
+					"sourceid": "7"
+				},
+				{
+					"pluginid": "10036",
+					"alertRef": "10036-2",
+					"alert": "Server Leaks Version Information via \"Server\" HTTP Response Header Field",
+					"name": "Server Leaks Version Information via \"Server\" HTTP Response Header Field",
+					"riskcode": "1",
+					"confidence": "3",
+					"riskdesc": "Low (High)",
+					"desc": "<p>The web/application server is leaking version information via the \"Server\" HTTP response header. Access to such information may facilitate attackers identifying other vulnerabilities your web/application server is subject to.</p>",
+					"instances":[ 
+						{
+							"id": "14",
+							"uri": "http://sentinelpay-dev-alb-2097557956.eu-west-1.elb.amazonaws.com",
+							"nodeName": "http:\/\/sentinelpay-dev-alb-2097557956.eu-west-1.elb.amazonaws.com",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "Werkzeug/3.1.9 Python/3.11.17",
+							"otherinfo": ""
+						},
+						{
+							"id": "2",
+							"uri": "http://sentinelpay-dev-alb-2097557956.eu-west-1.elb.amazonaws.com/",
+							"nodeName": "http:\/\/sentinelpay-dev-alb-2097557956.eu-west-1.elb.amazonaws.com\/",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "Werkzeug/3.1.9 Python/3.11.17",
+							"otherinfo": ""
+						},
+						{
+							"id": "16",
+							"uri": "http://sentinelpay-dev-alb-2097557956.eu-west-1.elb.amazonaws.com/robots.txt",
+							"nodeName": "http:\/\/sentinelpay-dev-alb-2097557956.eu-west-1.elb.amazonaws.com\/robots.txt",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "Werkzeug/3.1.9 Python/3.11.17",
+							"otherinfo": ""
+						},
+						{
+							"id": "12",
+							"uri": "http://sentinelpay-dev-alb-2097557956.eu-west-1.elb.amazonaws.com/sitemap.xml",
+							"nodeName": "http:\/\/sentinelpay-dev-alb-2097557956.eu-west-1.elb.amazonaws.com\/sitemap.xml",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "Werkzeug/3.1.9 Python/3.11.17",
+							"otherinfo": ""
+						}
+					],
+					"count": "4",
+					"systemic": false,
+					"solution": "<p>Ensure that your web server, application server, load balancer, etc. is configured to suppress the \"Server\" header or provide generic details.</p>",
+					"otherinfo": "",
+					"reference": "<p>https://httpd.apache.org/docs/current/mod/core.html#servertokens</p><p>https://learn.microsoft.com/en-us/previous-versions/msp-n-p/ff648552(v=pandp.10)</p><p>https://www.troyhunt.com/shhh-dont-let-your-response-headers/</p>",
+					"cweid": "497",
+					"wascid": "13",
+					"sourceid": "7"
+				},
+				{
+					"pluginid": "10049",
+					"alertRef": "10049-1",
+					"alert": "Non-Storable Content",
+					"name": "Non-Storable Content",
+					"riskcode": "0",
+					"confidence": "2",
+					"riskdesc": "Informational (Medium)",
+					"desc": "<p>The response contents are not storable by caching components such as proxy servers. If the response does not contain sensitive, personal or user-specific information, it may benefit from being stored and cached, to improve performance.</p>",
+					"instances":[ 
+						{
+							"id": "18",
+							"uri": "http://sentinelpay-dev-alb-2097557956.eu-west-1.elb.amazonaws.com",
+							"nodeName": "http:\/\/sentinelpay-dev-alb-2097557956.eu-west-1.elb.amazonaws.com",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "500",
+							"otherinfo": ""
+						},
+						{
+							"id": "3",
+							"uri": "http://sentinelpay-dev-alb-2097557956.eu-west-1.elb.amazonaws.com/",
+							"nodeName": "http:\/\/sentinelpay-dev-alb-2097557956.eu-west-1.elb.amazonaws.com\/",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "500",
+							"otherinfo": ""
+						},
+						{
+							"id": "19",
+							"uri": "http://sentinelpay-dev-alb-2097557956.eu-west-1.elb.amazonaws.com/robots.txt",
+							"nodeName": "http:\/\/sentinelpay-dev-alb-2097557956.eu-west-1.elb.amazonaws.com\/robots.txt",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "500",
+							"otherinfo": ""
+						},
+						{
+							"id": "17",
+							"uri": "http://sentinelpay-dev-alb-2097557956.eu-west-1.elb.amazonaws.com/sitemap.xml",
+							"nodeName": "http:\/\/sentinelpay-dev-alb-2097557956.eu-west-1.elb.amazonaws.com\/sitemap.xml",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "500",
+							"otherinfo": ""
+						}
+					],
+					"count": "4",
+					"systemic": false,
+					"solution": "<p>The content may be marked as storable by ensuring that the following conditions are satisfied:</p><p>The request method must be understood by the cache and defined as being cacheable (\"GET\", \"HEAD\", and \"POST\" are currently defined as cacheable)</p><p>The response status code must be understood by the cache (one of the 1XX, 2XX, 3XX, 4XX, or 5XX response classes are generally understood)</p><p>The \"no-store\" cache directive must not appear in the request or response header fields</p><p>For caching by \"shared\" caches such as \"proxy\" caches, the \"private\" response directive must not appear in the response</p><p>For caching by \"shared\" caches such as \"proxy\" caches, the \"Authorization\" header field must not appear in the request, unless the response explicitly allows it (using one of the \"must-revalidate\", \"public\", or \"s-maxage\" Cache-Control response directives)</p><p>In addition to the conditions above, at least one of the following conditions must also be satisfied by the response:</p><p>It must contain an \"Expires\" header field</p><p>It must contain a \"max-age\" response directive</p><p>For \"shared\" caches such as \"proxy\" caches, it must contain a \"s-maxage\" response directive</p><p>It must contain a \"Cache Control Extension\" that allows it to be cached</p><p>It must have a status code that is defined as cacheable by default (200, 203, 204, 206, 300, 301, 404, 405, 410, 414, 501).</p>",
+					"otherinfo": "",
+					"reference": "<p>https://datatracker.ietf.org/doc/html/rfc7234</p><p>https://datatracker.ietf.org/doc/html/rfc7231</p><p>https://www.w3.org/Protocols/rfc2616/rfc2616-sec13.html</p>",
+					"cweid": "524",
+					"wascid": "13",
+					"sourceid": "7"
+				}
+			]
+		}
+	],
+	"sequences":[
+	]
+
+}

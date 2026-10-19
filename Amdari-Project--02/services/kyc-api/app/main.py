@@ -4,7 +4,7 @@ from flask import (
     Flask,
     jsonify,
 )
-
+from werkzeug.exceptions import HTTPException
 from app.routes.verify import verify_bp
 from app.routes.documents import documents_bp
 
@@ -43,15 +43,28 @@ def create_app():
     # SECURITY:
     # Log full diagnostics server-side, but do not expose exception messages
     # or tracebacks to clients.
+
+    # Remediates ZAP security alert: "Information Disclosure - Error Message Disclosure"
+    @app.after_request
+    def set_security_headers(response):
+        response.headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
+        response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, private"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+        response.headers["Server"] = "SentinelPay"
+        return response
+
+    @app.errorhandler(HTTPException)
+    def handle_http_exception(exc):
+        return jsonify({"error": "resource not found" if exc.code == 404 else "request error"}), exc.code
+
     @app.errorhandler(Exception)
     def handle_exception(exc):
-        app.logger.exception(
-            "Unhandled KYC application exception"
-        )
-
-        return jsonify({
-            "error": "internal server error"
-        }), 500
+        app.logger.exception("Unhandled KYC application exception")
+        return jsonify({"error": "request could not be processed"}), 500
 
     return app
 

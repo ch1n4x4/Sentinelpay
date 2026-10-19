@@ -190,7 +190,7 @@ resource "aws_db_instance" "this" {
   # Backups
   # -------------------------------------------------------
 
-  backup_retention_period = 7
+  backup_retention_period = 0 #changed for dast testing
 
   copy_tags_to_snapshot = true
 
@@ -239,9 +239,9 @@ resource "aws_db_instance" "this" {
   # CKV_AWS_293
   # -------------------------------------------------------
 
-  deletion_protection = true
+  deletion_protection = false
 
-  skip_final_snapshot = false
+  skip_final_snapshot = true
 
   final_snapshot_identifier = "${var.project_name}-${var.environment}-postgres-final"
 

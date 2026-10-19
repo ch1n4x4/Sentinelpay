@@ -53,8 +53,8 @@ resource "aws_vpc_security_group_egress_rule" "alb_to_ecs" {
 
   cidr_ipv4 = var.vpc_cidr
 
-  from_port   = var.container_port
-  to_port     = var.container_port
+  from_port   = 8001
+  to_port     = 8002
   ip_protocol = "tcp"
 
   description = "Allow ALB outbound traffic to ECS targets within the VPC"
@@ -72,7 +72,7 @@ resource "aws_lb" "this" {
   # checkov:skip=CKV2_AWS_76:ALB is associated with a WAFv2 WebACL containing AWSManagedRulesKnownBadInputsRuleSet for Log4j protection
 
   name               = "${var.project_name}-${var.environment}-alb"
-  internal           = true
+  internal           = false 
   load_balancer_type = "application"
 
   security_groups = [
@@ -81,14 +81,14 @@ resource "aws_lb" "this" {
 
   subnets = var.public_subnet_ids
 
-  enable_deletion_protection = true
+  enable_deletion_protection = false
   drop_invalid_header_fields = true
   enable_http2               = true
 
   access_logs {
     bucket  = var.alb_logs_bucket
     prefix  = "alb"
-    enabled = true
+    enabled = false #changed for dast testing
   }
 
   tags = {
@@ -104,15 +104,15 @@ resource "aws_lb" "this" {
 resource "aws_lb_target_group" "this" {
   # checkov:skip=CKV_AWS_378:TLS terminates at the ALB and backend traffic remains inside the private VPC
 
-  name        = "${var.project_name}-${var.environment}-tg"
-  port        = var.container_port
+  name        = "${var.project_name}-${var.environment}-payments-tg"
+  port        = 8001
   protocol    = "HTTP"
   vpc_id      = var.vpc_id
   target_type = "ip"
 
   health_check {
     enabled             = true
-    path                = "/"
+    path                = "/health"
     protocol            = "HTTP"
     matcher             = "200-399"
     healthy_threshold   = 2
@@ -121,6 +121,28 @@ resource "aws_lb_target_group" "this" {
     timeout             = 5
   }
 
+  tags = {
+    Name = "${var.project_name}-${var.environment}-tg"
+  }
+}
+
+resource "aws_lb_target_group" "kyc" {
+  name        = "${var.project_name}-${var.environment}-kyc-tg"
+  port        = 8002
+  protocol    = "HTTP"
+  vpc_id      = var.vpc_id
+  target_type = "ip"
+
+  health_check {
+    enabled             = true
+    path                = "/health"
+    protocol            = "HTTP"
+    matcher             = "200-399"
+    healthy_threshold   = 2
+    unhealthy_threshold = 3
+    interval            = 30
+    timeout             = 5
+  }
   tags = {
     Name = "${var.project_name}-${var.environment}-tg"
   }
@@ -139,6 +161,37 @@ resource "aws_lb_listener" "https" {
 
   ssl_policy      = "ELBSecurityPolicy-TLS13-1-2-2021-06"
   certificate_arn = var.acm_certificate_arn
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.this.arn
+  }
+}
+
+resource "aws_lb_listener_rule" "kyc_routing" {
+  listener_arn = var.acm_certificate_arn != null ? aws_lb_listener.https[0].arn : aws_lb_listener.http_forward[0].arn
+  priority     = 100
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.kyc.arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/v1/verify*", "/v1/documents*"]
+    }
+  }
+}
+
+# ---------------------------------------------------------
+# HTTP Forward Listener (used when acm_certificate_arn is null)
+# ---------------------------------------------------------
+resource "aws_lb_listener" "http_forward" {
+  count             = var.acm_certificate_arn == null ? 1 : 0
+  load_balancer_arn = aws_lb.this.arn
+  port              = 80
+  protocol          = "HTTP"
 
   default_action {
     type             = "forward"
@@ -166,6 +219,9 @@ resource "aws_lb_listener" "http" {
       status_code = "HTTP_301"
     }
   }
+  depends_on = [
+    aws_lb_listener.http_forward
+  ]
 }
 
 # ---------------------------------------------------------

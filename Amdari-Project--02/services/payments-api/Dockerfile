@@ -24,4 +24,4 @@ USER appuser
 
 EXPOSE 8001
 
-CMD ["python", "-m", "app.main"]
+CMD ["gunicorn", "--bind", "0.0.0.0:8001", "--workers", "2", "app.main:create_app()"]

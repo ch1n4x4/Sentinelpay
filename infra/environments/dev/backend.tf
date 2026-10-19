@@ -2,7 +2,7 @@ terraform {
 
   backend "s3" {
 
-    bucket = "sentinelpay-terraform-state-3ed7fc7c"
+    bucket = "sentinelpay-terraform-state-5f5321b4"
 
     key = "environments/dev/terraform.tfstate"
 
