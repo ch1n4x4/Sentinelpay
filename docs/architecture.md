@@ -1,108 +1,235 @@
-# 01. System Architecture & Security Controls
+# SentinelPay: System Architecture & Security Controls
 
 [← Back to Main Overview](../README.md)
 
-> **Scope:** This document provides the architectural blueprint across all three engineering tracks of the SentinelPay platform: **Application Security (`payments-api` & `kyc-api`)**, **Cloud Security & Terraform Infrastructure (`eu-west-1`)**, and **DevSecOps CI/CD & Software Supply-Chain Security**.
+> **Scope:** This document provides the complete architectural blueprint of the SentinelPay platform across all four implementation phases:
+> 1. **Phase 1 — Application Security (AppSec) & Container Runtime Architecture** (`payments-api`, `kyc-api`, `V-APP-01`–`V-APP-11` controls, and hardened Alpine/Gunicorn containers)[cite: 2, 7]
+> 2. **Phase 2 — DevSecOps CI/CD, Policy as Code & Supply-Chain Architecture** (Reusable GitHub Actions workflows, keyless AWS OIDC federation, OPA/Conftest Rego policies, Syft CycloneDX SBOMs, and Cosign provenance)[cite: 1, 4, 6]
+> 3. **Phase 3 — Cloud Security & Modular Terraform Architecture (`eu-west-1`)** (S3/DynamoDB state locking, Multi-AZ VPC segmentation, ECS Fargate, RDS PostgreSQL 17, ElastiCache Redis, S3 Object Lock, KMS, Secrets Rotation, and GuardDuty/CloudTrail/Honeytoken detection)[cite: 1, 3, 5]
+> 4. **Phase 4 — Live Edge Routing, DAST & HTTP Response Hardening Architecture** (Public ALB path-based routing, AWS WAFv2, ACM TLS 1.3/1.2 termination, exception boundaries, and defensive HTTP headers)[cite: 2, 7]
 
 ---
 
-## 1. Application Layer Architecture (`payments-api` & `kyc-api`)
+## Table of Contents
+- [1. Phase 1: Application Security (AppSec) & Container Runtime Architecture](#1-phase-1-application-security-appsec--container-runtime-architecture)
+- [2. Phase 2: DevSecOps CI/CD, Policy as Code & Supply-Chain Architecture](#2-phase-2-devsecops-cicd-policy-as-code--supply-chain-architecture)
+- [3. Phase 3: Cloud Security & Modular Terraform Architecture (`eu-west-1`)](#3-phase-3-cloud-security--modular-terraform-architecture-eu-west-1)
+- [4. Phase 4: Live Edge Routing, DAST & HTTP Response Hardening Architecture](#4-phase-4-live-edge-routing-dast--http-response-hardening-architecture)
 
-SentinelPay's application tier comprises two containerized Python 3.11 Flask microservices deployed on AWS ECS Fargate and backed by shared Amazon RDS PostgreSQL 17 (`:5432`) and Amazon ElastiCache Redis (`:6379`) data stores, alongside external integrations for AWS S3 KYC storage, BVN identity verification, and merchant transaction webhooks.
+---
 
-![High-Level Cloud Architecture](../assets/images/architecture.png)
+## 1. Phase 1: Application Security (AppSec) & Container Runtime Architecture
 
-### Microservice Route & Trust Boundary Inventory
+### 1.1 Microservice Topology & Trust Boundaries
+SentinelPay's application layer consists of two Python 3.11 Flask microservices—**`payments-api` (`:8001`)** and **`kyc-api` (`:8002`)**—communicating with a shared **PostgreSQL (`:5432`)** database and **Redis (`:6379`)** cache/rate-limiting store, alongside external integrations for **AWS S3** (KYC document storage), an external **BVN provider** (identity lookup), and **merchant webhooks** (transaction callbacks)[cite: 2, 7].
 
-#### `payments-api` (Flask / Gunicorn — Port `8001`)
+```mermaid
+graph TB
+    Clients([Clients: Merchants / Admins]) --> PayAPI[payments-api<br/>Flask / Gunicorn :8001<br/>/v1/auth, /v1/accounts, /v1/transactions,<br/>/v1/wallets, /v1/webhooks, /v1/admin]
+    Clients --> KycAPI[kyc-api<br/>Flask / Gunicorn :8002<br/>/v1/verify, /v1/documents, /health]
+
+    PayAPI -->|Parameterized SQL + Row Lock| PG[(PostgreSQL :5432<br/>Shared Relational DB)]
+    KycAPI -->|Parameterized SQL| PG
+
+    PayAPI -->|Flask-Limiter 5/min| Redis[(Redis :6379<br/>Cache / Rate-Limit State)]
+    KycAPI -->|Session / State| Redis
+
+    PayAPI -->|HTTPS Validated Callbacks| Ext[External Systems:<br/>AWS S3 KYC Bucket<br/>BVN Provider<br/>Merchant Webhooks]
+    KycAPI -->|users/user_id/ S3 Prefix & Hardcoded BVN Map| Ext
+```
+
+### 1.2 Endpoint Inventory & Vulnerability Mapping
+
+#### `payments-api` Route Architecture (Port `8001`)[cite: 2, 7]
 
 | Full Route | Method | Needs Auth | Money | KYC Data | Functional Role & Remediated Vulnerability Mapping |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| `/health` | `GET` | No | No | No | Container and ALB target group health check probe. |
-| `/v1/auth/register` | `POST` | No | No | No | Creates merchant identity records in `users`; hardened with Argon2id hashing (`V-APP-06`) and Redis rate limiting (`V-APP-08`). |
-| `/v1/auth/login` | `POST` | No | No | No | Authenticates users, transparently upgrades legacy MD5 hashes to Argon2id (`V-APP-06`), enforces `5/min` rate limits (`V-APP-08`), and issues `RS256` JWTs (`V-APP-02`). |
-| `/v1/auth/otp` | `POST` | No | No | No | Generates OTPs; hardened with Redis rate limiting (`V-APP-08`) and secret-masked logs (`V-APP-11`). |
-| `/v1/accounts/<account_id>` | `GET` | Yes | Reads | No | Reads account balance, currency, and status; enforces `WHERE id = %s AND user_id = %s` ownership checks (`V-APP-03` IDOR). |
-| `/v1/accounts/` | `GET` | Yes | Reads | No | Lists all accounts belonging to the authenticated caller. |
-| `/v1/accounts/<account_id>/profile` | `PUT` | Yes | Can write | No | Updates account profile; whitelists only `account_number` and `currency` to prevent mass assignment (`V-APP-07`). |
-| `/v1/transactions/search` | `GET` | Yes | Reads | No | Searches transaction records; hardened with `psycopg2` parameterized `%s` queries (`V-APP-01` SQLi). |
-| `/v1/transactions/<reference>` | `GET` | Yes | Reads | No | Retrieves transaction details by unique reference. |
-| `/v1/wallets/<account_id>/credit` | `POST` | Yes | Writes | No | Credits wallet balance; enforces account ownership (`V-APP-03`) and structured audit logging (`V-APP-11`). |
-| `/v1/wallets/<account_id>/debit` | `POST` | Yes | Writes | No | Debits wallet balance; enforces PostgreSQL `SELECT ... FOR UPDATE` row-level locking (`V-APP-05` race condition), ownership (`V-APP-03`), and `sentinelpay.audit` logging (`V-APP-11`). |
-| `/v1/webhooks/` | `POST` | Yes | No | No | Registers merchant webhook URLs; validates destination IPs via `validate_callback_url` (`V-APP-04` SSRF). |
-| `/v1/webhooks/test` | `POST` | Yes | No | No | Test-fires webhook; blocks private, loopback, link-local, and metadata IPs with `allow_redirects=False` (`V-APP-04` SSRF). |
-| `/v1/admin/session/restore` | `POST` | Yes (Admin) | No | No | Restores admin sessions; replaced `pickle.loads()` with `itsdangerous.URLSafeTimedSerializer` (`V-APP-10` RCE). |
-| `/v1/admin/users` | `GET` | Yes (Admin) | No | No | Lists all platform users; protected by `RS256` JWT verification and explicit `admin` role checks (`V-APP-02`). |
+| `/health` | `GET` | No | No | No | Unauthenticated container and ALB target group health check probe[cite: 2, 7]. |
+| `/v1/auth/register` | `POST` | No | No | No | Creates merchant user in `users` table; hardened with **Argon2id** hashing (`V-APP-06`) and **Redis rate limiting** (`V-APP-08`)[cite: 2, 7]. |
+| `/v1/auth/login` | `POST` | No | No | No | Reads `id`, `password_hash`, `role`, `is_active` from `users`; issues **RS256 JWT** (`V-APP-02`), transparently migrates legacy MD5 hashes to **Argon2id** (`V-APP-06`), and enforces **5/min rate limits** (`V-APP-08`)[cite: 2, 7]. |
+| `/v1/auth/otp` | `POST` | No | No | No | Generates OTP; hardened with **Redis rate limiting** (`V-APP-08`) and **OTP log masking** (`V-APP-11`)[cite: 2, 7]. |
+| `/v1/accounts/<account_id>` | `GET` | Yes | Reads | No | Reads account balance, currency, status, and ownership; enforces `WHERE id = %s AND user_id = %s` (**`V-APP-03` IDOR**)[cite: 2, 7]. |
+| `/v1/accounts/` | `GET` | Yes | Reads | No | Lists all accounts and balances belonging to the authenticated caller[cite: 2, 7]. |
+| `/v1/accounts/<account_id>/profile` | `PUT` | Yes | Can write | No | Updates account profile; strictly whitelists `account_number` and `currency` to block **`V-APP-07` Mass Assignment** of `balance`, `status`, or `user_id`[cite: 2, 7]. |
+| `/v1/transactions/search` | `GET` | Yes | Reads | No | Searches transaction records (`amount`, `currency`, `direction`, `counterparty`, `description`); uses parameterized `%s` queries (**`V-APP-01` SQLi**)[cite: 2, 7]. |
+| `/v1/transactions/<reference>` | `GET` | Yes | Reads | No | Reads a specific transaction and its financial details by unique reference[cite: 2, 7]. |
+| `/v1/wallets/<account_id>/credit` | `POST` | Yes | Writes | No | Credits account balance and inserts credit record; enforces ownership (**`V-APP-03`**) and structured **`sentinelpay.audit` logging** (**`V-APP-11`**)[cite: 2, 7]. |
+| `/v1/wallets/<account_id>/debit` | `POST` | Yes | Writes | No | Debits account balance; wrapped in a transaction with PostgreSQL `SELECT ... FOR UPDATE` row-level locking (**`V-APP-05` Race Condition**) and **`sentinelpay.audit` logging** (**`V-APP-11`**)[cite: 2, 7]. |
+| `/v1/webhooks/` | `POST` | Yes | No | No | Writes merchant webhook configuration (`user_id`, callback URL, event type) to PostgreSQL after URL validation (**`V-APP-04` SSRF**)[cite: 2, 7]. |
+| `/v1/webhooks/test` | `POST` | Yes | No | No | Fires test HTTP POST to webhook URL; enforces `validate_callback_url` (HTTPS only, blocks private/loopback/metadata IPs, `allow_redirects=False` — **`V-APP-04` SSRF**)[cite: 2, 7]. |
+| `/v1/admin/session/restore` | `POST` | Yes (Admin) | No | No | Restores admin session state; replaced `pickle.loads()` with `itsdangerous.URLSafeTimedSerializer` (**`V-APP-10` Insecure Deserialization / RCE**)[cite: 2, 7]. |
+| `/v1/admin/users` | `GET` | Yes (Admin) | No | No | Reads all rows from `users`; protected by asymmetric **RS256 JWT** verification and explicit `request.current_user_role == "admin"` checks (**`V-APP-02`**)[cite: 2, 7]. |
 
-#### `kyc-api` (Flask / Gunicorn — Port `8002`)
+#### `kyc-api` Route Architecture (Port `8002`)[cite: 2, 7]
 
 | Full Route | Method | Needs Auth | Money | KYC Data | Functional Role & Remediated Vulnerability Mapping |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| `/health` | `GET` | No | No | No | Container and ALB target group health check probe. |
-| `/v1/verify/bvn` | `POST` | Yes | No | Processes KYC ID | Submits BVN to external provider; locked to a hardcoded server-side provider URL map (`V-APP-04` SSRF). |
-| `/v1/verify/lookup` | `GET` | Yes | No | Reads KYC | Queries `kyc_records` by BVN or NIN; remediated with parameterized `%s` queries (`V-APP-01` SQLi). |
-| `/v1/documents/upload` | `POST` | Yes | No | Writes KYC | Uploads identity documents to the KMS-encrypted S3 KYC bucket under `users/{user_id}/`. |
-| `/v1/documents/<path:key>` | `GET` | Yes | No | Reads KYC | Retrieves KYC documents from S3; strictly enforces caller namespace ownership (`users/{user_id}/`) (`V-APP-03` IDOR). |
+| `/health` | `GET` | No | No | No | Unauthenticated container and ALB target group health check probe[cite: 2, 7]. |
+| `/v1/verify/bvn` | `POST` | Yes | No | Processes KYC ID | Submits BVN to external identity provider; hardcoded to a server-side provider URL configuration map (**`V-APP-04` SSRF**)[cite: 2, 7]. |
+| `/v1/verify/lookup` | `GET` | Yes | No | Reads KYC | Queries `kyc_records` by BVN or NIN; hardened with `psycopg2` parameterized `%s` queries (**`V-APP-01` SQLi**)[cite: 2, 7]. |
+| `/v1/documents/upload` | `POST` | Yes | No | Writes KYC | Uploads identity documents to the KMS-encrypted S3 KYC bucket under `users/{user_id}/`[cite: 2, 7]. |
+| `/v1/documents/<path:key>` | `GET` | Yes | No | Reads KYC | Retrieves KYC documents from S3; enforces strict caller namespace ownership (`users/{user_id}/`) (**`V-APP-03` IDOR**)[cite: 2, 7]. |
 
-### Application Vulnerability Register (`V-APP-01` – `V-APP-11`)
+### 1.3 Static Vulnerability Analytics & Power BI Triage Architecture
+During Phase 1, `security_scan.py` executed **Semgrep**, **Gitleaks**, and **Bandit** across the repository, feeding a custom **Microsoft Power BI Vulnerability Dashboard** to deduplicate and rank findings prior to manual code review[cite: 2, 7]:
+* **Severity Distribution (64 Total Findings):** **36 Critical**, **3 High**, **20 Medium**, and **5 Low**[cite: 2, 7].
+* **Tool Detection Breakdown:** **Semgrep** (30 detections), **Gitleaks** (29 detections), and **Bandit** (13 detections)[cite: 2, 7].
+* **Top 8 Most Vulnerable Files:** `docker-compose.yml`, `.github/workflows/ci.yml`, `scripts/legacy_deploy.sh`, `services/kyc-api/app/routes/documents.py`, `services/kyc-api/app/routes/verify.py`, `services/payments-api/tests/test_audit_logging.py`, `services/payments-api/app/auth.py`, and `services/payments-api/app/routes/admin.py`[cite: 2, 7].
+* **Top 6 Triggered Rules:** `sentinelpay-sensitive-env`, `yaml.github-actions.security.github-actions-mutable-action-tag`, `sentinelpay-terraform-secret`, `sentinelpay-database-url`, Bandit `B608` (SQL injection construction), and `aws-access-token`[cite: 2, 7].
 
-| ID | Vulnerability | Risk | Root Cause in Legacy Code | Engineered Security Control |
-| :--- | :--- | :--- | :--- | :--- |
-| **`V-APP-01`** | **SQL Injection** | Critical | `f-strings` and `.format()` concatenated untrusted query parameters into SQL statements. | Rewrote queries using `psycopg2` parameterized `%s` placeholders. |
-| **`V-APP-02`** | **Broken JWT Auth** | Critical | Symmetric `HS256` with weak secrets and no algorithm validation (`alg: none` bypass). | Migrated to asymmetric `RS256` (`JWT_PRIVATE_KEY` / `JWT_PUBLIC_KEY`), 15-min expiry, and refresh rotation. |
-| **`V-APP-03`** | **IDOR** | High | Queried accounts/wallets via `WHERE id = %s` and S3 keys without checking caller ownership. | Enforced `WHERE id = %s AND user_id = %s` in SQL and `users/{user_id}/` prefix validation in S3. |
-| **`V-APP-04`** | **SSRF** | High | Passed unvalidated URLs to `requests.get()`/`post()` with redirects enabled. | Built `validate_callback_url` (HTTPS-only, blocks private/loopback/metadata IPs, `allow_redirects=False`). |
-| **`V-APP-05`** | **Race Condition** | Critical | Sequential `SELECT balance` and `UPDATE` allowed concurrent double-spending. | Wrapped debits in a transaction with PostgreSQL row-level locking (`SELECT ... FOR UPDATE`). |
-| **`V-APP-06`** | **Weak Hashing** | High | Stored unsalted `hashlib.md5()` password hashes. | Migrated to `Argon2id` (`argon2-cffi`) with transparent login-time re-hashing of legacy MD5 hashes. |
-| **`V-APP-07`** | **Mass Assignment** | High | Dynamically bound raw JSON keys to SQL `UPDATE` columns on `/profile`. | Whitelisted only `account_number` and `currency`, rejecting unknown fields. |
-| **`V-APP-08`** | **Missing Rate Limit** | Medium | Auth and OTP endpoints allowed unlimited brute-force attempts. | Added Redis-backed `Flask-Limiter` (`5/minute`) keyed by IP and hashed canonical email/E.164 phone. |
-| **`V-APP-09`** | **Verbose Errors** | Low | Ran with `debug=True` and leaked stack traces. | Enforced `debug=False`, added `@app.errorhandler(HTTPException)` (`404`/`405`), and sanitized `500` responses. |
-| **`V-APP-10`** | **Pickle RCE** | Critical | Used `pickle.loads()` on untrusted session blobs at `/v1/admin/session/restore`. | Replaced `pickle` with `itsdangerous.URLSafeTimedSerializer` signed JSON payloads. |
-| **`V-APP-11`** | **Audit Log Gap** | Medium | Financial debits/credits and KYC changes lacked structured audit trails. | Built `sentinelpay.audit` structured JSON logger recording actor, action, target, reference, amount, and IP. |
+### 1.4 Defense-in-Depth Application Controls (`V-APP-01` – `V-APP-11`)
 
----
+| Control ID | Vulnerability Class | Severity | Architectural Control & Implementation Mechanism |
+| :--- | :--- | :--- | :--- |
+| **`V-APP-01`** | **SQL Injection (SQLi)** | Critical | Replaced all `f-string` and `.format()` SQL concatenation in `transactions.py` and `verify.py` with `psycopg2` parameterized `%s` queries so inputs never alter SQL AST structure[cite: 1, 2, 7]. |
+| **`V-APP-02`** | **JWT Auth & Algorithm Confusion** | Critical | Migrated from symmetric `HS256` to asymmetric **`RS256`** (`JWT_PRIVATE_KEY` signs tokens in `payments-api`; `JWT_PUBLIC_KEY` verifies tokens across both services), explicitly rejecting `alg: none` and enforcing 15-minute expirations with refresh-token rotation[cite: 1, 2, 7]. |
+| **`V-APP-03`** | **Insecure Direct Object Reference (IDOR)** | High | Enforced data-layer ownership checks (`WHERE id = %s AND user_id = %s`) on account/wallet queries and restricted S3 KYC object keys to `users/{user_id}/`[cite: 1, 2, 7]. |
+| **`V-APP-04`** | **Server-Side Request Forgery (SSRF)** | High | Implemented `validate_callback_url()` enforcing `https://`, resolving DNS, and blocking private, loopback (`127.0.0.1`), link-local/IMDS (`169.254.169.254`), and multicast IPs with `allow_redirects=False`; locked BVN lookups to a server-side URL map[cite: 2, 7]. |
+| **`V-APP-05`** | **TOCTOU Race Condition** | Critical | Wrapped wallet debits in an atomic database transaction with a PostgreSQL row-level lock (`SELECT ... FOR UPDATE`), serializing concurrent debit requests per wallet[cite: 2, 7]. |
+| **`V-APP-06`** | **Weak Password Hashing** | High | Replaced `hashlib.md5()` with **`Argon2id`** (`argon2-cffi`, `$argon2id$v=19$m=65536,t=3,p=4`) and implemented transparent login-time re-hashing for existing MD5 records[cite: 2, 7]. |
+| **`V-APP-07`** | **Mass Assignment** | High | Replaced dynamic JSON column binding on `PUT /v1/accounts/<account_id>/profile` with an explicit whitelist permitting only `account_number` and `currency`[cite: 2, 7]. |
+| **`V-APP-08`** | **Missing Rate Limiting** | Medium | Deployed Redis-backed **`Flask-Limiter`** (`5/minute`) on `/v1/auth/login`, `/register`, and `/otp`, keyed by client IP and cryptographically hashed canonical email/E.164 phone identifiers[cite: 2, 7]. |
+| **`V-APP-09`** | **Verbose Error Disclosure** | Low | Disabled `debug=True` and registered `@app.errorhandler(HTTPException)` + `@app.errorhandler(Exception)` to log full tracebacks server-side while returning sanitized JSON to clients[cite: 2, 7]. |
+| **`V-APP-10`** | **Insecure Deserialization (RCE)** | Critical | Removed `pickle.loads()` from `/v1/admin/session/restore` and replaced it with `itsdangerous.URLSafeTimedSerializer` for signed, time-bound JSON session tokens[cite: 2, 7]. |
+| **`V-APP-11`** | **Compliance Audit Logging** | Medium | Engineered `sentinelpay.audit` to emit structured JSON logs (`timestamp`, `event`, `actor_user_id`, `action`, `target`, `account_id`, `reference`, `amount`, `currency`, `ip`) with automatic secret/OTP masking[cite: 2, 7]. |
 
-## 2. Cloud Security & Modular Terraform Architecture (`infra/`)
-
-The AWS environment in `eu-west-1` is rooted at `infra/environments/dev` and decomposes infrastructure into reusable modules under `infra/modules/`, backed by an out-of-band `Bootstrap/` state configuration (S3 bucket with versioning/encryption + DynamoDB lock table with KMS encryption and 35-day Point-in-Time Recovery).
-
-### Terraform Module Inventory & Security Purpose
-
-| Module Path | Provisioned AWS Resources | Security Controls Implemented |
-| :--- | :--- | :--- |
-| **`Bootstrap/`** | `aws_s3_bucket.terraform_state`, `aws_dynamodb_table.terraform_locks` | `prevent_destroy = true`, Versioning, Server-Side Encryption, Public Access Block, DynamoDB `LockID` locking & 35-day PITR. |
-| **`modules/network`** | VPC, 2 Public & 2 Private Subnets (`eu-west-1a/1b`), IGW, NAT Gateway, VPC Endpoints, Flow Logs | `map_public_ip_on_launch = false` (`CKV_AWS_130`), empty `default` SG (`default-deny`), PrivateLink endpoints (S3, ECR, Secrets Manager, KMS, CloudWatch), 365-day KMS-encrypted VPC Flow Logs. |
-| **`modules/edge`** | Application Load Balancer (`aws_lb`), Target Groups, HTTPS/HTTP Listeners, AWS WAFv2 Web ACL | `drop_invalid_header_fields = true`, `enable_deletion_protection = true`, HTTP/2, S3 access logging, `ELBSecurityPolicy-TLS13-1-2-2021-06`, HTTP `301` redirect, WAFv2 (`CommonRuleSet` & `KnownBadInputsRuleSet`), 365-day KMS WAF logs with `authorization` header redaction. |
-| **`modules/compute`** | ECS Fargate Cluster, Task Definitions, Services, Security Groups, CloudWatch Log Group | `containerInsights = "enabled"` (`CKV_AWS_65`), `assign_public_ip = false`, ingress restricted strictly to `alb_security_group_id`, scoped egress (`:443`, `:5432`, `:6379`, `:53`), 365-day KMS-encrypted logs. |
-| **`modules/rds`** | Multi-AZ RDS PostgreSQL 17 (`db.t4g.micro`), Subnet Group, Parameter Group, Enhanced Monitoring Role | `storage_encrypted = true` (KMS), `multi_az = true`, `publicly_accessible = false`, `iam_database_authentication_enabled = true`, `rds.force_ssl = 1`, query logging (`ddl`), Performance Insights (KMS), Deletion Protection, ingress restricted to ECS & Rotation Lambda SGs. |
-| **`modules/data` (`redis` & `s3`)** | Account S3 Public Access Block, S3 Access Logs Bucket, S3 KYC Bucket, ElastiCache Redis (2-node `cache.t4g.micro`) | S3 KYC Object Lock (`GOVERNANCE`, 90 days), KMS encryption with Bucket Keys, Versioning, EventBridge notifications; Redis `at_rest_encryption_enabled = true`, `transit_encryption_enabled = true`, automatic failover, 32-char `auth_token` in Secrets Manager, ingress restricted to ECS SG (`:6379`). |
-| **`modules/security-iam` & `modules/kms`** | `kms-admin` & `kms-user` IAM Roles, Customer-Managed KMS Key (`alias/sentinelpay-dev-data`) | 30-day deletion window, `enable_key_rotation = true`, least-privilege separation between key administrators and cryptographic users, condition-scoped service grants. |
-| **`modules/secrets-rotation`** | Secrets Manager DB Secret (`sentinelpay/dev/database`), Rotation Lambda (`python3.13`), AWS Signer, SQS DLQ | Automated 30-day PostgreSQL password rotation (`createSecret`, `setSecret`, `testSecret`, `finishSecret`) with `sslmode='verify-full'`, AWS Signer code signing (`CKV_AWS_272`), X-Ray active tracing (`CKV_AWS_50`), KMS-encrypted SQS DLQ (`CKV_AWS_116`). |
-| **`modules/identity-center`** | AWS IAM Identity Center Permission Set (`sentinelpay-Developer`) | Enforces 4-hour maximum session duration (`PT4H`) with `ReadOnlyAccess` for human administrative separation. |
-| **`modules/github-oidc`** | IAM OIDC Provider (`token.actions.githubusercontent.com`), Role (`sentinelpay-dev-github-actions`) | Keyless `sts:AssumeRoleWithWebIdentity` locked to audience `sts.amazonaws.com` and immutable repo/branch/PR subject claims; least-privilege ECR/ECS deployment policy. |
-| **`modules/detection`** | Multi-Region CloudTrail, GuardDuty, Security Hub, AWS Config, IAM Honeytoken, Quarantine Lambda | CloudTrail S3 Object Lock (`COMPLIANCE`, 365 days) + log validation + SNS + TLS-only bucket policy; GuardDuty (S3, EBS malware, RDS, Lambda); Security Hub (FSBP v1.0.0 & CIS v5.0.0); Config (CIS v1.4 L2 pack); Honeytoken (`sentinelpay-dev-honeytoken`) + EventBridge alarm; Severity `>= 7` Quarantine Lambda isolating ENIs into `sentinelpay-dev-quarantine` SG. |
+### 1.5 Container Runtime Hardening Architecture (`Dockerfile`)
+Both `services/payments-api/Dockerfile` and `services/kyc-api/Dockerfile` enforce five container security controls[cite: 2, 7]:
+1. **Minimal Base OS:** Migrated from `python:3.11` to `python:3.11-alpine` with `apk update && apk upgrade --no-cache`[cite: 2, 7].
+2. **Artifact Hygiene:** Purges residual `*.lock`, `*old.txt`, `*bak.txt`, `Pipfile*`, and `poetry*` files during build[cite: 2, 7].
+3. **Least-Privilege Non-Root Execution (`CK-02` & `IV-05`):** Creates a dedicated system group and user (`appuser:appgroup` with `/sbin/nologin`), transfers `/app` ownership, and enforces `USER appuser`[cite: 2, 7].
+4. **Native Health Probes:** Configures `HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3` polling `http://localhost:8001/health` and `:8002/health`[cite: 2, 7].
+5. **Production WSGI Server:** Runs 2 **Gunicorn** worker processes (`gunicorn --bind 0.0.0.0:8001 --workers 2 app.main:create_app()`) instead of Werkzeug's single-threaded development server[cite: 2, 7].
 
 ---
 
-## 3. DevSecOps CI/CD & Software Supply-Chain Architecture (`.github/workflows/`)
+## 2. Phase 2: DevSecOps CI/CD, Policy as Code & Supply-Chain Architecture
 
-To prevent monolithic pipeline sprawl, `.github/workflows/ci.yml` acts as a central orchestrator invoking four domain-specific reusable workflows across every pull request and push to `main`:
+### 2.1 Reusable GitHub Actions Orchestration Architecture
+To avoid a brittle monolithic pipeline, SentinelPay separates workflow orchestration from specialist security domains under `.github/workflows/`[cite: 4, 6]. A protected `main` branch enforces pull-request reviews and required status checks before any code or Terraform change can merge[cite: 3, 4, 5, 6].
 
 ```mermaid
 graph LR
-    A[Developer Push / PR] --> B[ci.yml Coordinator]
-    B --> C[4.1 security-scans.yml<br/>Gitleaks + Bandit + Semgrep + Trivy FS]
-    B --> D[4.2 infrastructure-security.yml<br/>Checkov + tfsec + AWS OIDC Test]
-    B --> E[4.3 container-security.yml<br/>Docker Build + Trivy Image + Syft SBOM<br/>+ ECR Push + Cosign Sign/Attest/Verify]
-    B --> F[4.4 policy-checks.yml<br/>Terraform Plan JSON + OPA Conftest]
+    Dev([Developer PR / Push]) --> Orch[ci.yml<br/>Central Orchestrator]
+    Orch --> W1[security-scans.yml<br/>Gitleaks + Bandit + Semgrep + Trivy FS]
+    Orch --> W2[infrastructure-security.yml<br/>Checkov + tfsec + AWS OIDC Test]
+    Orch --> W3[container-security.yml<br/>Build + Trivy Image Gate + Syft SBOM<br/>+ ECR Push + Cosign Sign/Attest/Verify]
+    Orch --> W4[policy-checks.yml<br/>OIDC + Terraform Plan JSON + OPA Conftest]
 ```
 
-### Reusable Workflow Responsibilities & Enforcement Matrix
-
-| Workflow File | Tools & Controls Executed | Blocking & Evidence Behavior |
+| Workflow File | Security Domain | Integrated Tools & Enforcement Architecture |
 | :--- | :--- | :--- |
-| **`ci.yml`** | Central pipeline coordinator. | Enforces PR-only delivery into protected `main` with mandatory review and status checks. |
-| **`security-scans.yml`** | **Gitleaks** (`.gitleaks.toml` + `gitleaks-baseline.json`), **Bandit**, **Semgrep** (`--error`), **Trivy** (filesystem/dependency scan). | Any unbaselined secret in Git history, High-severity Bandit issue, ERROR-level Semgrep match, or High/Critical dependency CVE blocks the workflow and uploads JSON reports. |
-| **`infrastructure-security.yml`** | **Checkov**, **tfsec**, and **AWS OIDC Authentication Test** (`sts:AssumeRoleWithWebIdentity`). | Blocks on High/Critical `tfsec` findings and specified priority Checkov checks; verifies live OIDC token exchange against `sentinelpay-dev-github-actions`. |
-| **`container-security.yml`** | **Docker**, **Trivy Image Scan**, **Syft** (`CycloneDX`), **Amazon ECR**, **Cosign / Sigstore**, `verify_supply_chain.sh`. | Builds `payments-api` & `kyc-api`, scans both images before enforcing the combined `if: always()` CRITICAL gate, generates `payments-sbom.cdx.json` & `kyc-sbom.cdx.json`, pushes to immutable ECR, resolves `sha256` digests, signs & attests keylessly with Cosign, and verifies transparency-log claims. |
-| **`policy-checks.yml`** | **AWS OIDC**, **Terraform** (`init`, `validate`, `plan`, `show -json`), **OPA / Rego / Conftest** (`--all-namespaces`). | Authenticates via OIDC to access the S3 state backend in `infra/environments/dev`, generates plan JSON, and evaluates 4 Rego policy packages (`s3_public.rego`, `network_ingress.rego`, `encryption.rego`, `iam_wildcard.rego`). |
+| **`.github/workflows/ci.yml`** | **Central Coordinator** | Entry point triggered on `pull_request` and `push`; invokes the four specialist reusable workflows with 5-minute fail-closed timeouts[cite: 4, 6]. |
+| **`security-scans.yml`** | **AppSec, Secrets & SCA** | Runs **Gitleaks** across full Git history (`.gitleaks.toml` + `gitleaks-baseline.json`), **Bandit** (blocks on High severity), **Semgrep** (`--error` blocks on ERROR findings), and **Trivy FS** (`.trivyignore`)[cite: 1, 4, 6]. |
+| **`infrastructure-security.yml`** | **Static IaC & OIDC Identity** | Evaluates Terraform HCL with **Checkov** and **tfsec** (blocking on HIGH/CRITICAL) and validates live keyless role assumption via **Test AWS OIDC Authentication**[cite: 3, 4, 5, 6]. |
+| **`container-security.yml`** | **Container & Supply Chain** | Builds `payments-api` and `kyc-api` images, scans both with **Trivy** before enforcing a combined `if: always()` CRITICAL gate, generates **Syft** CycloneDX SBOMs (`payments-sbom.cdx.json`, `kyc-sbom.cdx.json`), pushes to immutable **Amazon ECR**, resolves `sha256` digests, signs and attests keylessly with **Cosign**, and verifies provenance via `verify_supply_chain.sh`[cite: 4, 6]. |
+| **`policy-checks.yml`** | **Executable Policy as Code** | Assumes the AWS OIDC role to initialize the S3 remote backend in `infra/environments/dev`, generates a real Terraform plan JSON, and evaluates all Rego namespaces (`--all-namespaces`) with **OPA / Conftest**[cite: 3, 4, 5, 6]. |
+
+### 2.2 Policy as Code Architecture (`policy/terraform/` & `policy-tests/`)
+Cycle 4 encoded SentinelPay's cloud security baseline into four Open Policy Agent (OPA) Rego v1 packages evaluated by Conftest against both paired JSON unit-test fixtures (`policy-tests/*/secure.json` and `insecure.json`) and live Terraform plan JSON[cite: 1, 4, 6]:
+
+| Rego Policy File | Package Namespace | Enforced Architectural Invariant |
+| :--- | :--- | :--- |
+| **`policy/terraform/s3_public.rego`** | `package terraform.s3` | Denies any `aws_s3_bucket` with a `public-read`, `public-read-write`, or `authenticated-read` ACL, and denies any `aws_s3_bucket_public_access_block` unless all four public-access block flags are `true`[cite: 1, 4, 6]. |
+| **`policy/terraform/network_ingress.rego`** | `package terraform.network` | Denies any `aws_security_group_rule` with `type == "ingress"` and `0.0.0.0/0` CIDR unless `from_port == 443`, `to_port == 443`, and `protocol == "tcp"` (the approved ALB HTTPS exception)[cite: 1, 4, 6]. |
+| **`policy/terraform/encryption.rego`** | `package terraform.encryption` | Denies any `aws_db_instance` (`storage_encrypted != true`), `aws_ebs_volume` (`encrypted != true`), `aws_dynamodb_table` (`server_side_encryption.enabled != true`), or `aws_s3_bucket_server_side_encryption_configuration` (`count(rule) == 0`) lacking encryption at rest[cite: 1, 4, 6]. |
+| **`policy/terraform/iam_wildcard.rego`** | `package terraform.iam` | Denies any customer-managed `aws_iam_policy` whose `Statement[_].Action` contains full (`*`) or service-level (`:*`) wildcard permissions[cite: 1, 4, 6]. |
+
+### 2.3 Keyless AWS OIDC & Software Supply-Chain Provenance Architecture
+SentinelPay eliminates static CI cloud credentials and mutable image tag risks through an end-to-end cryptographic provenance chain[cite: 3, 4, 5, 6]:
+1. **OIDC Federation (`infra/modules/github-oidc`):** GitHub Actions requests an OIDC JWT from `https://token.actions.githubusercontent.com` (`aud: sts.amazonaws.com`) and assumes `arn:aws:iam::105045466108:role/sentinelpay-dev-github-actions` via `sts:AssumeRoleWithWebIdentity`[cite: 1, 3, 4, 5, 6]. The IAM trust policy locks access strictly to `repo:sentinelpay-team@321830913/Sentinelpay@1348603997:ref:refs/heads/main` and `:pull_request`[cite: 3, 5].
+2. **Immutable Registry & Digest Resolution:** Validated container images are pushed to `sentinelpay-dev-payments-api` and `sentinelpay-dev-kyc-api` in Amazon ECR with tag immutability enabled, and the pipeline resolves the exact `@sha256:<digest>` content identifier[cite: 3, 4, 5, 6].
+3. **Sigstore / Cosign Signing & CycloneDX Attestation:** Cosign signs both image digests keylessly using ephemeral keys backed by Sigstore's Rekor transparency log and Fulcio certificate authority, attaches the Syft CycloneDX SBOMs as attestations, and runs `verify_supply_chain.sh` to enforce fail-closed verification prior to deployment[cite: 4, 6].
+
+---
+
+## 3. Phase 3: Cloud Security & Modular Terraform Architecture (`eu-west-1`)
+
+### 3.1 Five-Plane Cloud Security Model
+The AWS platform in `eu-west-1` (Ireland) is rooted at `infra/environments/dev` and structured across 10 reusable Terraform modules under `infra/modules/` plus an out-of-band `Bootstrap/` state configuration[cite: 1, 3, 5]:
+
+```mermaid
+graph TB
+    subgraph Bootstrap["0. Remote State Bootstrap (Bootstrap/)"]
+        StateS3[(S3 State Bucket<br/>Versioned + SSE + prevent_destroy)]
+        LockDDB[(DynamoDB Lock Table<br/>LockID + KMS + 35-Day PITR)]
+    end
+
+    subgraph EdgePlane["1. Edge Plane (modules/edge)"]
+        WAF[AWS WAFv2 Regional Web ACL<br/>CommonRuleSet + KnownBadInputsRuleSet]
+        ALB[Application Load Balancer<br/>TLS 1.3/1.2 + HTTP 301 Redirect + S3 Access Logs]
+        WAF --> ALB
+    end
+
+    subgraph NetComputePlane["2. Network & Compute Plane (modules/network + compute)"]
+        VPC[Multi-AZ VPC: eu-west-1a / 1b<br/>2 Public + 2 Private Subnets + NAT + VPC Endpoints]
+        ECS[ECS Fargate Cluster<br/>ContainerInsights + Private Tasks + SG Chaining]
+        ALB --> ECS
+    end
+
+    subgraph DataPlane["3. Data Plane (modules/rds + data)"]
+        RDS[(RDS PostgreSQL 17 Multi-AZ<br/>gp3 + KMS + force_ssl=1 + IAM Auth)]
+        Redis[(ElastiCache Redis 2-Node<br/>At-Rest KMS + In-Transit TLS + AUTH)]
+        KYCS3[(S3 KYC Bucket<br/>KMS Bucket Key + Object Lock GOVERNANCE)]
+        ECS --> RDS
+        ECS --> Redis
+        ECS --> KYCS3
+    end
+
+    subgraph IdentityPlane["4. Identity, KMS & Secrets Plane (security-iam + kms + secrets-rotation + identity-center + github-oidc)"]
+        KMS[Customer-Managed KMS Key<br/>Auto-Rotation + Split Admin/User Roles]
+        Rot[Secrets Manager + Python 3.13 Rotation Lambda<br/>30-Day Rotation + AWS Signer + X-Ray + SQS DLQ]
+        SSO[IAM Identity Center: Developer PT4H ReadOnly<br/>+ GitHub Actions OIDC Role]
+        Rot <--> RDS
+    end
+
+    subgraph DetectPlane["5. Detection & Response Plane (modules/detection)"]
+        CT[Multi-Region CloudTrail<br/>S3 Object Lock COMPLIANCE + KMS + SNS]
+        GD[GuardDuty + Security Hub FSBP/CIS<br/>+ AWS Config CIS v1.4 L2 Conformance Pack]
+        Honey[IAM Honeytoken User/Key + EventBridge Alarm]
+        Quar[Quarantine Lambda: Python 3.13<br/>Isolates Compromised ENIs on Severity >= 7]
+        GD -->|EventBridge Severity >= 7| Quar
+    end
+```
+
+### 3.2 Module-by-Module Technical Specifications
+
+| Module | File Path | Provisioned Resources & Hardened Security Parameters |
+| :--- | :--- | :--- |
+| **Remote State Bootstrap** | `Bootstrap/` | `aws_s3_bucket.terraform_state` (`prevent_destroy = true`, Versioning, `AES256`/KMS SSE, all 4 Public Access Block flags) and `aws_dynamodb_table.terraform_locks` (`PAY_PER_REQUEST`, `LockID` hash key, SSE enabled, 35-day PITR)[cite: 1, 3, 5]. |
+| **Network** | `infra/modules/network` | Custom VPC (`enable_dns_support = true`, `enable_dns_hostnames = true`), 2 public & 2 private subnets across `eu-west-1a/1b` (`map_public_ip_on_launch = false`, `CKV_AWS_130`), IGW, NAT Gateway, VPC Endpoints (S3, ECR, Secrets Manager, KMS, CloudWatch), locked-down `aws_default_security_group.default` (`ingress = []`, `egress = []`), and 60s VPC Flow Logs (`ALL` traffic) streaming to a 365-day KMS-encrypted CloudWatch Log Group[cite: 1, 3, 5]. |
+| **Edge & WAF** | `infra/modules/edge` | Application Load Balancer (`drop_invalid_header_fields = true`, `enable_deletion_protection = true`, `enable_http2 = true`, S3 access logs), HTTPS listener (`:443`, `ELBSecurityPolicy-TLS13-1-2-2021-06`), HTTP redirect listener (`:80` -> `:443` `HTTP_301`), and `aws_wafv2_web_acl` (`REGIONAL`) enforcing `AWSManagedRulesCommonRuleSet` (Priority 1) and `AWSManagedRulesKnownBadInputsRuleSet` (Priority 2, Log4j protection) with 365-day KMS CloudWatch logs and `authorization` header redaction[cite: 1, 3, 5]. |
+| **Compute** | `infra/modules/compute` | `aws_ecs_cluster` (`containerInsights = "enabled"`, `CKV_AWS_65`), Fargate `awsvpc` Task Definition (`cpu = 256`, `memory = 512`), private `aws_ecs_service` (`assign_public_ip = false`), 365-day KMS CloudWatch logs (`/ecs/sentinelpay-dev`), and `aws_security_group.ecs` allowing inbound traffic strictly from `alb_security_group_id` and scoped egress (`:443`, `:5432`, `:6379`, `:53` TCP/UDP)[cite: 1, 3, 5]. |
+| **Relational Database** | `infra/modules/rds` | Multi-AZ (`multi_az = true`, `CKV_AWS_157`) PostgreSQL 17 (`db.t4g.micro`, `gp3` 20–100 GB storage), `storage_encrypted = true` (KMS), `publicly_accessible = false`, `iam_database_authentication_enabled = true` (`CKV_AWS_161`), parameter group enforcing `rds.force_ssl = 1` (`CKV2_AWS_69`) and query logging (`log_statement = "ddl"`, `log_min_duration_statement = 1000`, `log_connections = 1`, `log_disconnections = 1`, `CKV2_AWS_30`), 7-day backups, Enhanced Monitoring (`60s`, `CKV_AWS_118`), KMS Performance Insights (`CKV_AWS_353`), CloudWatch log exports (`postgresql`, `upgrade`), Deletion Protection (`CKV_AWS_293`), and ingress restricted to ECS and Rotation Lambda SGs on `:5432`[cite: 1, 3, 5]. |
+| **Data (S3 & Redis)** | `infra/modules/data` | `aws_s3_account_public_access_block` (account-wide), S3 Access Logs bucket, S3 KYC bucket (`object_lock_enabled = true`, `GOVERNANCE` mode for 90 days, KMS Bucket Keys, Versioning, S3 server access logging, EventBridge notifications), and 2-node ElastiCache Redis replication group (`cache.t4g.micro`, `at_rest_encryption_enabled = true`, `transit_encryption_enabled = true`, `automatic_failover_enabled = true`, 32-char `auth_token` stored in KMS-encrypted Secrets Manager with 30-day rotation support, and `:6379` ingress restricted to ECS SG)[cite: 1, 3, 5]. |
+| **IAM & KMS** | `infra/modules/security-iam` & `kms` | Separated `sentinelpay-dev-kms-admin` (key lifecycle/policy management only) and `sentinelpay-dev-kms-user` (encrypt/decrypt/data-key usage only) roles; `aws_kms_key.this` (`deletion_window_in_days = 30`, `enable_key_rotation = true`) with condition-scoped service statements (`kms:ViaService`, `aws:SourceArn`, `kms:EncryptionContext`)[cite: 1, 3, 5]. |
+| **Secrets Rotation** | `infra/modules/secrets-rotation` | `aws_secretsmanager_secret.database` (`sentinelpay/dev/database`) rotated every 30 days by `aws_lambda_function.rotation` (`python3.13`, `infra/lambda/postgres-rotation/lambda_function.py`) implementing `createSecret`, `setSecret`, `testSecret`, and `finishSecret` over `sslmode='verify-full'`, hardened with AWS Signer (`AWSLambda-SHA384-ECDSA`, `CKV_AWS_272`), X-Ray active tracing (`CKV_AWS_50`), reserved concurrency (`5`, `CKV_AWS_115`), and a KMS-encrypted SQS DLQ (`CKV_AWS_116`)[cite: 1, 3, 5]. |
+| **Human & CI Identity** | `infra/modules/identity-center` & `github-oidc` | IAM Identity Center `sentinelpay-Developer` permission set (`session_duration = "PT4H"`, `ReadOnlyAccess`) and GitHub OIDC provider (`token.actions.githubusercontent.com`) + `sentinelpay-dev-github-actions` role scoped to ECR/ECS deployment actions[cite: 1, 3, 5]. |
+| **Detection & Containment** | `infra/modules/detection` | Multi-region `aws_cloudtrail` (`enable_log_file_validation = true`, KMS encrypted, SNS topic `CKV_AWS_252`, 365-day KMS CloudWatch logs, S3 bucket with Object Lock `COMPLIANCE` mode for 365 days and TLS-only bucket policy); `aws_guardduty_detector` (`FIFTEEN_MINUTES`, S3, EBS malware, RDS login, and Lambda network features); `aws_securityhub_account` (**FSBP v1.0.0** & **CIS v5.0.0**); `aws_config_configuration_recorder` + **CIS AWS v1.4 Level 2 Conformance Pack** (`cis-aws-v1.4-level2.yaml`); Deception Honeytoken (`aws_iam_user.honeytoken` + Secrets Manager + EventBridge rule `sentinelpay-dev-honeytoken-used`); and Automated Quarantine (`aws_cloudwatch_event_rule.guardduty_high` for `severity >= 7` invoking `sentinelpay-dev-quarantine` Python 3.13 Lambda to move compromised ENIs into the zero-access `sentinelpay-dev-quarantine` SG)[cite: 1, 3, 5]. |
+
+---
+
+## 4. Phase 4: Live Edge Routing, DAST & HTTP Response Hardening Architecture
+
+### 4.1 Public Edge-to-Container Routing Architecture
+To support live traffic and external OWASP ZAP Dynamic Application Security Testing (DAST) in `eu-west-1`, the edge and compute layers enforce a dual-service routing and TLS termination architecture[cite: 2, 7]:
+* **Transport Layer Security (`:443` & `:80`):** The internet-facing ALB (`sentinelpay-dev-alb-2097557956.eu-west-1.elb.amazonaws.com`) terminates HTTPS on port `443` using an AWS ACM X.509 certificate and `ELBSecurityPolicy-TLS13-1-2-2021-06`, while port `80` enforces a permanent `HTTP_301` redirect to HTTPS port `443`[cite: 1, 2, 7].
+* **Path-Based Microservice Routing:**
+  * Default listener rule forwards requests to the **`payments-api` target group (`TCP :8001`)**[cite: 2, 7].
+  * Path-pattern listener rules matching `/v1/verify*` and `/v1/documents*` forward requests to the **`kyc-api` target group (`TCP :8002`)**[cite: 2, 7].
+* **Security Group Chaining:** The ALB security group permits egress on TCP ports `8001–8002` across `var.vpc_cidr` (`10.0.0.0/16`), and the ECS task security group permits ingress on `8001–8002` strictly from `alb_security_group_id` while routing outbound port `443` traffic through the NAT Gateway to reach Amazon ECR and CloudWatch Logs[cite: 1, 2, 7].
+
+### 4.2 HTTP Exception Boundary & Defensive Header Architecture
+To eliminate all Medium, Low, and Informational findings surfaced during active and passive OWASP ZAP (`v2.17.0`) scans against the live ALB, both `payments-api` and `kyc-api` enforce a two-layer HTTP response architecture in `app/main.py`[cite: 2, 7]:
+
+1. **Separated HTTP vs. Unhandled Exception Boundaries (Remediation for ZAP Plugins `90022` & `10023`):**
+   * `@app.errorhandler(HTTPException)` intercepts standard Werkzeug routing errors (`404 Not Found` on `/`, `/robots.txt`, `/sitemap.xml` and `405 Method Not Allowed`) **before** the generic `Exception` handler so Flask returns accurate `404`/`405` status codes (`{"error": "resource not found"}`) rather than `500 Internal Server Error`[cite: 2, 7].
+   * `@app.errorhandler(Exception)` logs unhandled stack traces server-side via `app.logger.exception()` and returns `{"error": "request could not be processed"}` (`500`) without triggering debug-error signatures[cite: 2, 7].
+2. **Outgoing Security & Anti-Caching Header Middleware (`@app.after_request`):**
+   Every HTTP response from both microservices injects the following hardened headers[cite: 2, 7]:
+   * `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'` (resolves Plugin `10038`)[cite: 2, 7]
+   * `X-Content-Type-Options: nosniff` (resolves Plugin `10021`)[cite: 2, 7]
+   * `Cross-Origin-Resource-Policy: same-origin` (resolves Plugin `90004`)[cite: 2, 7]
+   * `Permissions-Policy: geolocation=(), microphone=(), camera=()` (resolves Plugin `10063`)[cite: 2, 7]
+   * `Cache-Control: no-store, no-cache, must-revalidate, private`, `Pragma: no-cache`, and `Expires: 0` (resolves Plugin `10049`)[cite: 2, 7]
+   * `Server: SentinelPay` paired with Gunicorn workers (suppresses `Werkzeug/3.1.9 Python/3.11.17` banner leakage; resolves Plugin `10036`)[cite: 2, 7]
