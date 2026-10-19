@@ -11,7 +11,7 @@
 | Role | Owner | Track |
 |---|---|---|
 | Team Lead | Me | Threat modelling, PR review, constraint verification, attack-sim coordination |
-| AppSec Engineer | Chinanza | Vulnerability scanning, manual code review, application fixes |
+| AppSec Engineer | Chinaza | Vulnerability scanning, manual code review, application fixes |
 | Cloud Engineer — Network & Compute | Femi | VPC, ECS Fargate, ALB, WAF, IAM |
 | Cloud Engineer — Data, Identity & Detection | Ben | KMS, RDS, Secrets Manager, GuardDuty, CloudTrail, Security Hub, honeytokens |
 | DevSecOps Engineer | Mohammed | CI/CD pipeline, OIDC federation, policy-as-code, image signing |
